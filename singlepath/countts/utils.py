@@ -1,86 +1,119 @@
-import numpy as np 
+import numpy as np
+import numpy.random as rd
+import warnings
 
- 
-def splitParameters(theta, ar, la = None, X = None):
-    if not type(theta).__module__ == np.__name__ :
-        theta = np.array(theta)
-    ## parameters   
-    omega = theta[0]
-    alpha = theta[1:(ar+1)] ## first element corresponds to the oldest observation
-    
-    if la and X:
-        latentInitiated =  np.ones(la)
-        beta = theta[(ar+1):(ar + la + 1)] ## first element corresponds to the oldest lattent process value
-        gamma = theta[(ar + la + 1):]
-        
-        return omega, alpha, beta, gamma, latentInitiated
-        
-    elif la and not X:
-        beta = theta[(ar+1):] ## first element corresponds to the oldest lattent process value
-        latentInitiated =   np.ones(la)
-        
-        if not len(theta) == (ar+la+1):
-            raise ValueError("Incorrect number of parameter : length of theta must be equal ar + la + 1")
-       
-        return omega, alpha, beta, latentInitiated
-    
-    elif not la and X:
-        gamma = theta[(ar+1):]
-        return omega, alpha, gamma
-    
-    
-    if not len(theta) == (ar+1):
-        raise ValueError("Incorrect number of parameter : length of theta must be equal ar + 1")
-    return omega, alpha
-        
-    
-    
 
-def singleLikelihoodPoisson(theta, y, ar, X = None, la = None, link = None):
-    lengthT =  len(y) # length of path
-    ## value
-    likelihood = 0
-    parameters = splitParameters(theta, ar = ar, la = la)
+def _latentProcess(parameters, yserie, ar, la = None, xseries = None):
+    yserie = yserie if isinstance(yserie, np.ndarray) else np.array(yserie)
+    xseries = xseries if isinstance(xseries, np.np.ndarray) else np.array(xseries)
+    latent = np.mean(yserie[:ar]) if la is None else np.ones(la)*np.mean(yserie[:ar])
+    lengthT = len(yserie)
+    for titer in range(ar, lengthT+1):
+        nextLatent = parameters[0] + np.sum(yserie[(titer-ar):titer] * parameters[1:(ar + 1)])
+        nextLatent = nextLatent + np.sum(latent[(titer-la):titer] * parameters[(ar + 1):(ar + la + 1)]) if not la is None else nextLatent
+        nextLatent = nextLatent + np.sum(xseries[titer, :] * parameters[(ar + la + 1):]) if not la is None and not  xseries is  None else nextLatent
+        nextLatent = nextLatent + np.sum(xseries[titer, :] * parameters[(ar + 1):]) if la is None and not xseries is None else nextLatent
+        latent = np.append(latent, nextLatent)
     
+    return latent  
+
+
+
+
+def _simulate(parameters, ar, lenpath = None, distribution = 'Poisson', yinit = None, link = None, la = None, xseries = None, **kwargs):
     
-    if len(parameters) == 2 :
-        omega, alpha = parameters
+  
+    xseries = xseries if isinstance(xseries, np.ndarray) else np.array(xseries)
     
-    elif len(parameters) == 3:
-        omega, alpha, gamma = parameters
+    if not lenpath and not xseries.all():
+        raise ValueError("one of lenpath and xseries is required")
     
-    elif len(parameters) == 4 :
-        omega, alpha, beta, latentInitiated = parameters
-    
-    elif len(parameters) == 5 :
-        omega, alpha, beta, gamma, latentInitiated = parameters
+    if not lenpath and xseries.all():
+        lenpath = xseries.shape[0]
         
-    
-    
-      
-    for tval in range(ar, lengthT+1):
-        lattent = omega + np.sum(alpha * y[(tval-ar):tval])
-        
-        if la and X:
-            lattent +=  np.sum(beta * latentInitiated) + np.sum(gamma * X)
-            latentInitiated = np.append(latentInitiated[1:], lattent)
-        
-        elif la and not X:
-            lattent += np.sum(beta * latentInitiated)
-            latentInitiated = np.append(latentInitiated[1:], lattent)
-            
-        elif not la and X:
-            lattent += np.sum(gamma * X)
-        
-        
-        if not link or link == "log":
-            likelihood += np.exp(lattent) - y[tval] * lattent
-        
-        elif link == "identity":
-            likelihood += lattent -  y[tval] * np.log(lattent)
-    
-    return likelihood
-            
+    if  xseries.all()  and not lenpath == len(xseries):
+        warnings.warn("lenpath must be equal to the number or rows of xseries, only len(xseries) is considered ")
+        lenpath = len(xseries) 
          
+    if 'phi' in kwargs:
+        if not 1-kwargs['phi']>0:
+            raise ValueError('The value of phi must be in (0,1)')
+    if yinit is None:
+        yinit = np.ones(ar)
+    elif len(yinit) == 1:
+        yinit *= np.ones(ar)
+    elif len(yinit) < ar:
+        yinit = np.mean(np.array(yinit)) * np.ones(ar) if not isinstance(yinit, np.ndarray) else np.mean(yinit) * np.ones(ar)
+        warnings.warn("the length of yinit is less than ar : we consider constant vector of mean value of yinit")
+    
+    yserie = yinit
+    latent = np.mean(yserie[:ar]) if la is None else np.ones(la)*np.mean(yserie[:ar])
+    lengthT = 2 * lenpath
+    
+    parameters = np.array(parameters) if not isinstance(parameters, np.ndarray) else parameters
+    
+    lenParam = 1 + ar
+     
+    if la:
+        lenParam +=  la
+    
+    print(lenParam)    
+    if xseries.all():
+        lenParam += xseries.shape[1]
+
+     
+
+    
+    if not len(parameters) == lenParam :
+        raise ValueError("Incorrect length of parameters vector")
+    
+    for titer in range(ar, lengthT+1):
+        if titer == lenpath + ar    and  xseries.all() :
+            break
         
-              
+        nextLatent = parameters[0] + np.sum(np.flip(yserie[-ar:]) * parameters[1:(ar + 1)])
+        
+        if  la  : 
+            nextLatent += np.sum(np.flip(latent[-la:]) * parameters[(ar + 1):(ar + la + 1)])
+        else: 
+            nextLatent += 0
+        if  la  and  xseries.all():
+            nextLatent = nextLatent + np.sum(xseries[titer-ar, :] * parameters[(ar + la + 1):])
+        else:
+            nextLatent += 0  
+        if not la  and  xseries.all()  :
+            nextLatent = nextLatent + np.sum(xseries[titer-ar, :] * parameters[(ar + 1):])
+        else: 
+            nextLatent += 0
+        latent = np.append(latent, nextLatent)
+        
+        try:
+            if link is None :
+                nextMean = nextLatent
+            elif hasattr(np,link) :
+                nextMean = eval(f"np.{link}({nextLatent})")
+            else:
+                nextMean = eval(f"{link}({nextLatent})")
+        except ValueError:
+            raise ValueError(f"Invalid value encounter in mean process, please check the values of parameters : {parameters}")
+             
+             
+        if link is None :
+            nextMean = nextLatent
+        elif hasattr(np,link) :
+            nextMean = eval(f"np.{link}({nextLatent})")
+        else:
+            nextMean = eval(f"{link}({nextLatent})")
+        
+        if not nextMean > 0 :
+            raise ValueError("The mean process must be positive")
+            
+        nextY = rd.negative_binomial(nextMean * kwargs['phi']/(1-kwargs['phi']), kwargs['phi']) if distribution == "NB" and 'phi' in kwargs else rd.poisson(lam=nextMean, size=1)
+
+        yserie = np.append(yserie, nextY)
+    
+    return {'latent': latent[-lenpath:], 'yserie': yserie[-lenpath:]}  
+
+def _derivativesLatent(parameters, yinit, ar, la = None, xseries = None):
+    pass 
+    
