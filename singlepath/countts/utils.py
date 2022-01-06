@@ -1,6 +1,9 @@
 import numpy as np
 import numpy.random as rd
 import warnings
+import  math as math
+
+
 
 
 def _latentProcess(parameters, yserie, ar, la = None, xseries = None):
@@ -57,7 +60,6 @@ def _simulate(parameters, ar, lenpath = None, distribution = 'Poisson', yinit = 
     if la:
         lenParam +=  la
     
-    print(lenParam)    
     if xseries.all():
         lenParam += xseries.shape[1]
 
@@ -71,7 +73,12 @@ def _simulate(parameters, ar, lenpath = None, distribution = 'Poisson', yinit = 
         if titer == lenpath + ar    and  xseries.all() :
             break
         
-        nextLatent = parameters[0] + np.sum(np.flip(yserie[-ar:]) * parameters[1:(ar + 1)])
+        if 'ytransform' in kwargs and hasattr(np, kwargs['ytransform']):
+            nextLatent = parameters[0] + np.sum(np.flip(eval(f"np.{kwargs['ytransform']}({yserie[-ar:]})")) * parameters[1:(ar + 1)]) 
+        elif 'ytransform' in kwargs and not hasattr(np, kwargs['ytransform']):
+            nextLatent = parameters[0] + np.sum(np.flip(eval(f"{kwargs['ytransform']}({yserie[-ar:]})")) * parameters[1:(ar + 1)]) 
+        else :
+            nextLatent = parameters[0] + np.sum(np.flip(yserie[-ar:]) * parameters[1:(ar + 1)])
         
         if  la  : 
             nextLatent += np.sum(np.flip(latent[-la:]) * parameters[(ar + 1):(ar + la + 1)])
@@ -113,6 +120,11 @@ def _simulate(parameters, ar, lenpath = None, distribution = 'Poisson', yinit = 
         yserie = np.append(yserie, nextY)
     
     return {'latent': latent[-lenpath:], 'yserie': yserie[-lenpath:]}  
+
+
+
+def transform(x) :
+    return np.array([math.log(1+y) for y in x])
 
 def _derivativesLatent(parameters, yinit, ar, la = None, xseries = None):
     pass 
