@@ -94,15 +94,16 @@ def _simulate(parameters, ar, lenpath = None, distribution = 'Poisson', yinit = 
             nextLatent += 0
         latent = np.append(latent, nextLatent)
         
-        try:
-            if link is None :
-                nextMean = nextLatent
-            elif hasattr(np,link) :
-                nextMean = eval(f"np.{link}({nextLatent})")
-            else:
-                nextMean = eval(f"{link}({nextLatent})")
-        except ValueError:
-            raise ValueError(f"Invalid value encounter in mean process, please check the values of parameters : {parameters}")
+        
+        print(nextLatent)
+        if link is None :
+            nextMean = nextLatent
+        elif hasattr(np,link) :
+            nextMean = eval(f"np.{link}({nextLatent})")
+        else:
+            nextMean = eval(f"{link}({nextLatent})")
+        #except ValueError:
+        #    raise ValueError(f"Invalid value encounter in mean process, please check the values of parameters : {parameters}")
              
              
         if link is None :
@@ -124,7 +125,7 @@ def _simulate(parameters, ar, lenpath = None, distribution = 'Poisson', yinit = 
 
 
 def transform(x) :
-    return np.array([math.log(1+y) for y in x])
+    return math.log(math.exp(x)+1) if len([x])==1 else np.array([math.log(math.exp(y)+1) for y in x])
 
 def _derivativesLatent(parameters, yinit, ar, la = None, xseries = None):
     pass 
